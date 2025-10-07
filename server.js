@@ -13,7 +13,7 @@ const colonyRoutes = require('./routes/colonies');
 const grampanchayatRoutes = require('./routes/grampanchayat');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3010;
 
 // Configure multer for form-data parsing
 const upload = multer();
