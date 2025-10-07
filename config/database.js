@@ -2,10 +2,10 @@ const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 const dbConfig = {
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
+    host: process.env.DB_HOST || '82.25.121.33',
+    user: process.env.DB_USER || 'u743335965_voters',
+    password: process.env.DB_PASSWORD || 'Weclocks@123',
+    database: process.env.DB_NAME || 'u743335965_voters',
     charset: 'utf8'
 };
 
