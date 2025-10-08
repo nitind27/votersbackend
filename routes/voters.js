@@ -5,7 +5,7 @@ const fs = require('fs');
 const router = express.Router();
 const { getConnection } = require('../config/database');
 
-// Configure multer for file uploads
+// Configure multer for file uploads - EXACTLY like PHP
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = path.join(__dirname, '../uploads/voter_photos');
@@ -15,21 +15,30 @@ const storage = multer.diskStorage({
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
-        cb(null, file.originalname);
+        // Use original filename like PHP - basename($_FILES['photo']['name'])
+        cb(null, path.basename(file.originalname));
     }
 });
 
+// Multer configuration - accept any field name for photo
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5242880 }
+    limits: { 
+        fileSize: parseInt(process.env.MAX_FILE_SIZE) || 5242880, // 5MB default
+        files: 1 // Only allow 1 file
+    },
+    fileFilter: (req, file, cb) => {
+        // Accept any file type like PHP
+        cb(null, true);
+    }
 });
 
-// Insert voter details - Accept form-data
+// Insert voter details - Accept form-data - EXACTLY like PHP
 router.post('/insert', upload.single('photo'), async (req, res) => {
     const connection = getConnection();
     
     try {
-        // Get data from form-data (req.body)
+        // Required fields validation - EXACTLY like PHP $_POST
         const colony_entry_id = req.body.colony_entry_id ? req.body.colony_entry_id.trim() : '';
         const first_name = req.body.first_name ? req.body.first_name.trim() : '';
         const middle_name = req.body.middle_name ? req.body.middle_name.trim() : '';
@@ -48,27 +57,51 @@ router.post('/insert', upload.single('photo'), async (req, res) => {
         const user_id = req.body.user_id ? req.body.user_id.trim() : '';
         const type_status = req.body.type_status ? req.body.type_status.trim() : '';
 
-        // Create full names
-        const full_name = [first_name, middle_name, last_name].filter(Boolean).join(' ');
-        const full_name_mr = [first_name_mr, middle_name_mr, last_name_mr].filter(Boolean).join(' ');
+        // Validate required fields
+        if (!colony_entry_id || !first_name || !last_name || !voter_number) {
+            return res.status(400).json({
+                error: true,
+                code: 400,
+                message: 'Required fields missing: colony_entry_id, first_name, last_name, voter_number'
+            });
+        }
 
-        // Handle photo upload
-        const photoName = req.file ? req.file.filename : '';
+        // Create full names - EXACTLY like PHP
+        // $full_name = trim($first_name . ' ' . $middle_name . ' ' . $last_name);
+        // $full_name = preg_replace('/\s+/', ' ', $full_name);
+        let full_name = [first_name, middle_name, last_name].join(' ').trim();
+        full_name = full_name.replace(/\s+/g, ' ');
+        
+        let full_name_mr = [first_name_mr, middle_name_mr, last_name_mr].join(' ').trim();
+        full_name_mr = full_name_mr.replace(/\s+/g, ' ');
 
-        const [result] = await connection.execute(`
+        // Photo upload - EXACTLY like PHP
+        // $photoName = '';
+        // if (isset($_FILES['photo']) && $_FILES['photo']['error'] === UPLOAD_ERR_OK) {
+        let photoName = '';
+        if (req.file && req.file.filename) {
+            // $photoName = basename($_FILES['photo']['name']);
+            photoName = path.basename(req.file.filename);
+        }
+
+        // Insert query - EXACTLY like PHP
+        const query = `
             INSERT INTO voter_entry 
             (colony_entry_id, first_name, middle_name, last_name, full_name, 
              first_name_mr, middle_name_mr, last_name_mr, full_name_mr, 
              voter_number, gender, availability, relation, dob, aadhaar_number, 
              booth_number, photo, mobile, user_id, type_status, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
-        `, [
+        `;
+
+        const [result] = await connection.execute(query, [
             colony_entry_id, first_name, middle_name, last_name, full_name,
             first_name_mr, middle_name_mr, last_name_mr, full_name_mr,
             voter_number, gender, availability, relation, dob, aadhaar_number,
             booth_number, photoName, mobile, user_id, type_status
         ]);
 
+        // Response - EXACTLY like PHP
         res.json({
             error: false,
             message: 'Family member submitted successfully.',
@@ -77,6 +110,17 @@ router.post('/insert', upload.single('photo'), async (req, res) => {
 
     } catch (error) {
         console.error('Insert voter error:', error);
+        
+        // If photo was uploaded but insert failed, delete the photo
+        if (req.file && req.file.path) {
+            try {
+                fs.unlinkSync(req.file.path);
+            } catch (unlinkError) {
+                console.error('Failed to delete uploaded photo:', unlinkError);
+            }
+        }
+        
+        // Error response - EXACTLY like PHP
         res.status(500).json({
             error: true,
             code: error.code || 500,

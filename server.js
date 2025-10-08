@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const multer = require('multer');
 require('dotenv').config();
 
 const { connectDB } = require('./config/database');
@@ -15,17 +14,11 @@ const grampanchayatRoutes = require('./routes/grampanchayat');
 const app = express();
 const PORT = process.env.PORT || 3011;
 
-// Configure multer for form-data parsing
-const upload = multer();
-
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// Use multer middleware for all routes to parse form-data
-app.use(upload.none());
 
 // Debug middleware to log form data
 app.use((req, res, next) => {
