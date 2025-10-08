@@ -265,47 +265,93 @@ router.post('/update', upload.single('photo'), async (req, res) => {
 });
 
 // Delete voter details - Accept form-data
-router.post('/delete', async (req, res) => {
-    const connection = getConnection();
+router.post('/delete', upload.none(), async (req, res) => {
+    const pool = getConnection();
+    const connection = await pool.getConnection(); // Get actual connection from pool
     
     try {
-        // Get data from form-data (req.body)
-        const voter_id = req.body.voter_id ? req.body.voter_id.trim() : '';
+        // Get data from form-data (req.body) - Convert to string first
+        const voter_id = req.body.voter_id ? String(req.body.voter_id).trim() : '';
 
-        // Get photo name before deletion
-        const [photoRows] = await connection.execute(
-            'SELECT photo FROM voter_entry WHERE voter_id = ?',
-            [voter_id]
-        );
-
-        if (photoRows.length === 0) {
-            return res.status(404).json({
+        // Validate required field
+        if (!voter_id) {
+            connection.release(); // Release connection before returning
+            return res.status(400).json({
                 error: true,
-                code: 404,
-                message: 'Voter not found.'
+                code: 400,
+                message: 'voter_id is required'
             });
         }
 
-        const photo = photoRows[0].photo;
+        // Start transaction to ensure data consistency
+        await connection.beginTransaction();
 
-        // Delete photo file
-        if (photo) {
-            const photoPath = path.join(__dirname, '../uploads/voter_photos', photo);
-            if (fs.existsSync(photoPath)) {
-                fs.unlinkSync(photoPath);
+        try {
+            // Get photo name before deletion
+            const [photoRows] = await connection.execute(
+                'SELECT photo FROM voter_entry WHERE voter_id = ?',
+                [voter_id]
+            );
+
+            if (photoRows.length === 0) {
+                await connection.rollback();
+                connection.release(); // Release connection
+                return res.status(404).json({
+                    error: true,
+                    code: 404,
+                    message: 'Voter not found.'
+                });
             }
+
+            const photo = photoRows[0].photo;
+
+            // Delete photo file first
+            if (photo) {
+                const photoPath = path.join(__dirname, '../uploads/voter_photos', photo);
+                if (fs.existsSync(photoPath)) {
+                    try {
+                        fs.unlinkSync(photoPath);
+                        console.log(`Photo deleted: ${photo}`);
+                    } catch (unlinkError) {
+                        console.error('Failed to delete photo file:', unlinkError);
+                        // Continue with database deletion even if photo deletion fails
+                    }
+                }
+            }
+
+            // Delete record from database
+            const [deleteResult] = await connection.execute(
+                'DELETE FROM voter_entry WHERE voter_id = ?',
+                [voter_id]
+            );
+
+            // Check if any rows were actually deleted
+            if (deleteResult.affectedRows === 0) {
+                await connection.rollback();
+                connection.release(); // Release connection
+                return res.status(404).json({
+                    error: true,
+                    code: 404,
+                    message: 'Voter not found or already deleted.'
+                });
+            }
+
+            // Commit transaction
+            await connection.commit();
+            connection.release(); // Release connection after successful commit
+            
+            res.json({
+                error: false,
+                message: 'Family member deleted successfully.',
+                deletedRows: deleteResult.affectedRows
+            });
+
+        } catch (transactionError) {
+            // Rollback transaction on any error
+            await connection.rollback();
+            connection.release(); // Release connection after rollback
+            throw transactionError;
         }
-
-        // Delete record
-        await connection.execute(
-            'DELETE FROM voter_entry WHERE voter_id = ?',
-            [voter_id]
-        );
-
-        res.json({
-            error: false,
-            message: 'Family member deleted successfully.'
-        });
 
     } catch (error) {
         console.error('Delete voter error:', error);
